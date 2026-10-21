@@ -29,7 +29,7 @@ Un /29 offre six adresses utilisables : le serveur, les deux pfSense et la VIP e
 | Source ↓ / Destination → | LAN | DMZ | FileServer | Internet |
 |---|---|---|---|---|
 | **LAN** | — | Autorisé | Autorisé | Autorisé |
-| **DMZ** | **Bloqué** | — | **Bloqué** | HTTP, HTTPS, ICMP |
+| **DMZ** | **Bloqué**, sauf agent Zabbix vers 192.168.99.30:10051 | — | **Bloqué** | HTTP, HTTPS, ICMP |
 | **FileServer** | Ports AD vers 192.168.99.15 uniquement | **Bloqué** | — | HTTP, HTTPS, ICMP |
 
 Le DNS de la DMZ passe par pfSense (VIP 192.168.20.5) ; celui de FileServer par le contrôleur de domaine.
@@ -51,9 +51,10 @@ Le DNS de la DMZ passe par pfSense (VIP 192.168.20.5) ; celui de FileServer par 
 | # | Action | Proto | Source | Destination | Port |
 |---|---|---|---|---|---|
 | 1 | Pass | TCP/UDP | DMZ subnets | This Firewall (self) | 53 |
-| 2 | Block, journalisé | any | DMZ subnets | RESEAUX_PRIVES | * |
-| 3 | Pass | TCP | DMZ subnets | any | PORTS_WEB |
-| 4 | Pass | ICMP | DMZ subnets | any | * |
+| 2 | Pass | TCP | DMZ subnets | 192.168.99.30 (Zabbix) | 10051 |
+| 3 | Block, journalisé | any | DMZ subnets | RESEAUX_PRIVES | * |
+| 4 | Pass | TCP | DMZ subnets | any | PORTS_WEB |
+| 5 | Pass | ICMP | DMZ subnets | any | * |
 
 **Onglet FILESERVER**
 
@@ -64,6 +65,8 @@ Le DNS de la DMZ passe par pfSense (VIP 192.168.20.5) ; celui de FileServer par 
 | 3 | Pass | TCP | FILESERVER subnets | any | PORTS_WEB |
 | 4 | Pass | ICMP | FILESERVER subnets | any | * |
 
+Captures des règles en place : [onglet DMZ](docs/images/tests/09-regles-dmz.png) (avant correction de l'adresse Zabbix) et [onglet FILESERVER](docs/images/tests/10-regles-fileserver.png).
+
 **NAT sortante** (mode Hybrid) : LAN subnets, 192.168.20.0/29 et 192.168.240.0/29 traduits vers la VIP WAN 192.168.112.99, pour que les connexions de chaque zone survivent à une bascule.
 
 ## Tests de validation (21 octobre 2026)
@@ -71,16 +74,23 @@ Le DNS de la DMZ passe par pfSense (VIP 192.168.20.5) ; celui de FileServer par 
 | ID | Test | Résultat attendu | Résultat obtenu |
 |---|---|---|---|
 | SEG 00 | Avant correction : DMZ vers AD, ports 445 et 389 | Doit être bloqué | **Défaut constaté** : connexions réussies |
-| SEG 01 | Après correction : DMZ vers AD, port 445 | Bloqué | À capturer (`nc -zv -w 3 192.168.99.15 445`) |
+| SEG 01 | Après correction : DMZ vers AD, port 445 | Bloqué | **Réussi** : connexion expirée (timed out) |
 | SEG 02 | DMZ : résolution DNS et HTTPS vers Internet | Réponse HTTP | **Réussi** : HTTP/2 200 |
 | SEG 03 | FileServer vers serveur web DMZ, port 80 | Bloqué | **Réussi** : TcpTestSucceeded False |
 | SEG 04 | FileServer vers AD, port 389 | Autorisé | **Réussi** : TcpTestSucceeded True |
 | SEG 05 | FileServer membre du domaine | Canal sécurisé valide | **Réussi** : Test-ComputerSecureChannel True |
-| SEG 06 | Blocages visibles dans les journaux pfSense | Lignes Block DMZ vers LAN | À capturer |
+| SEG 06 | Blocages visibles dans les journaux pfSense | Lignes Block DMZ vers LAN | **Réussi** : 192.168.20.1 vers 192.168.99.15:445 bloqué par la règle journalisée |
+| SEG 07 | Supervision du serveur web en DMZ | Hôte joignable dans Zabbix | **Réussi** : ZBX au vert sur 192.168.20.1 |
 
 **Avant correction, la DMZ joignait le contrôleur de domaine :**
 
 ![DMZ vers AD avant correction](docs/images/tests/01-avant-dmz-joint-ad-445-389.png)
+
+**Après correction, la DMZ ne joint plus le contrôleur de domaine, et le blocage est journalisé :**
+
+![DMZ vers AD après correction](docs/images/tests/06-apres-dmz-vers-ad-timed-out.png)
+
+![Journaux pfSense : DMZ vers AD bloqué](docs/images/tests/07-journaux-dmz-vers-ad-bloque.png)
 
 **Après correction, FileServer ne joint plus la DMZ mais joint toujours l'AD :**
 
@@ -144,10 +154,30 @@ Le DNS de la DMZ passe par pfSense (VIP 192.168.20.5) ; celui de FileServer par 
 
 **Ce que j'en retiens** : on vérifie un état avec la commande qui le mesure, pas avec une commande qui réussit dans les deux cas.
 
+### 5. Le durcissement a cassé la supervision du serveur web
+
+**Symptôme** : juste après la mise en place du blocage DMZ vers les réseaux privés, les journaux pfSense montraient des tentatives répétées de 192.168.20.1 vers 192.168.99.30:10051, bloquées par la nouvelle règle.
+
+**Cause** : l'agent Zabbix du serveur web fonctionne en mode actif ; il contacte lui-même le serveur Zabbix du LAN sur le port 10051. Ce flux légitime n'avait pas été prévu dans la matrice des flux.
+
+**Résolution** :
+1. Ajout d'une exception précise au-dessus du blocage : DMZ vers 192.168.99.30, TCP 10051 uniquement.
+2. Première version de la règle saisie avec la destination 192.168.99.20 (le poste Marketing) : son compteur d'états restait à 0, signe qu'elle ne servait jamais. Destination corrigée en 192.168.99.30.
+3. Mise à jour de l'adresse de l'hôte dans Zabbix (192.168.20.1 au lieu de l'ancienne adresse du LAN).
+
+**Résultat** : l'hôte Ubuntu_web_prod est de nouveau supervisé, ZBX au vert (SEG 07). Le mode passif (LAN vers DMZ, port 10050) passe par la règle LAN existante.
+
+![Journaux : agent Zabbix bloqué](docs/images/tests/08-journaux-zabbix-10051-bloque.png)
+
+![Zabbix : serveur web en DMZ supervisé](docs/images/tests/11-zabbix-serveur-web-dmz-vert.png)
+
+**Ce que j'en retiens** : un durcissement se teste aussi sur ce qu'il ne doit pas casser. Journaliser les blocages permet de retrouver les flux légitimes oubliés.
+
 ## Bonnes pratiques appliquées
 
 - Le fichier netplan du serveur DMZ s'appelle `50-cloud-init.yaml` : la configuration réseau de cloud-init est désactivée (`/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`) pour qu'il ne soit pas réécrit au redémarrage.
 - Sauvegarde de la configuration pfSense avant chaque modification des règles.
+- Chaque règle porte une description ; une règle dont le compteur d'états reste à 0 est vérifiée.
 - Mémoire de l'hôte limitée (16 Go) : seules les VM utiles à chaque scénario sont démarrées.
 
 ## Suite du projet
