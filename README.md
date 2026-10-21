@@ -1,6 +1,6 @@
 # Lab Active Directory, segmentation réseau et PowerShell
 
-Suite du lab pfSense en haute disponibilité (dépôt `lab-infra-pfsense-ha`). Le réseau unique du départ est découpé en trois zones de sécurité filtrées par la paire pfSense : un LAN pour les postes et l'annuaire, une DMZ pour le serveur web exposé et une zone dédiée au serveur de fichiers. Ce socle accueille ensuite l'automatisation Active Directory en PowerShell.
+Suite du [lab pfSense en haute disponibilité](https://github.com/richardlamahfr/lab-infra-pfsense-haute-disponibilite). Le réseau unique du départ est découpé en trois zones de sécurité filtrées par la paire pfSense : un LAN pour les postes et l'annuaire, une DMZ pour le serveur web exposé et une zone dédiée au serveur de fichiers. Ce socle accueille ensuite l'automatisation Active Directory en PowerShell.
 
 ![Architecture en trois zones](docs/images/architecture-3-zones.png)
 
