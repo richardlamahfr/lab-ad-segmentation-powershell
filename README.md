@@ -123,8 +123,58 @@ Le serveur DHCP de pfSense est désactivé sur le LAN : un seul serveur DHCP par
 | DHCP 01 | Bail obtenu par un poste du LAN | Adresse dans la plage, serveur 192.168.99.15 | **Réussi** : 192.168.99.55 |
 | DHCP 02 | Passerelle distribuée | 192.168.99.100 | **Réussi** après correction |
 | DHCP 03 | DNS distribué | 192.168.99.15 seul | **Réussi** après correction |
-| DHCP 04 | Accès Internet et résolution du domaine depuis le poste | `ping 8.8.8.8` et `nslookup ecole-gn.gn` répondent | À capturer |
-| DHCP 05 | Serveur DHCP autorisé dans l'AD | `Get-DhcpServerInDC` liste 192.168.99.15 | À capturer |
+| DHCP 04 | Accès Internet et résolution du domaine depuis le poste | `ping 8.8.8.8` et `nslookup ecole-gn.gn` répondent | **Réussi** : 0 % de perte, ecole-gn.gn résolu en 192.168.99.15 |
+| DHCP 05 | Serveur DHCP autorisé dans l'AD | `Get-DhcpServerInDC` liste 192.168.99.15 | **Réussi** : wn-server.ecole-gn.gn autorisé |
+
+![Poste : Internet et DNS de l'AD](docs/images/tests/14-dhcp-poste-internet-et-dns-ad.png)
+
+![Serveur DHCP autorisé dans l'AD](docs/images/tests/15-dhcp-autorise-dans-ad.png)
+
+*Remarque : `nslookup` affiche « Server: UnKnown » car il n'existe pas encore de zone de recherche inversée (192.168.99.x) pour retrouver le nom du serveur DNS à partir de son adresse. Création prévue.*
+
+## Automatisation Active Directory en PowerShell
+
+Le script [`scripts/New-LabADStructure.ps1`](scripts/New-LabADStructure.ps1) crée toute l'organisation du domaine à partir de [`scripts/utilisateurs.csv`](scripts/utilisateurs.csv) (30 utilisateurs fictifs : Direction 4, Développement 10, Comptabilité 6, Marketing 10).
+
+```
+ecole-gn.gn
+└── OU ECOLE-GN
+    ├── OU Utilisateurs
+    │   ├── OU Direction
+    │   ├── OU Developpement
+    │   ├── OU Comptabilite
+    │   └── OU Marketing
+    ├── OU Groupes         GRP_Direction, GRP_Developpement, GRP_Comptabilite, GRP_Marketing
+    └── OU Ordinateurs
+```
+
+**Choix de conception**
+
+| Choix | Raison |
+|---|---|
+| Identifiant `prenom.nom`, sans accents, 20 caractères maximum | Limite du sAMAccountName ; « Hélène Martin » devient `helene.martin` |
+| Suffixe numérique en cas d'homonyme | Deux « Mamadou Diallo » donnent `mamadou.diallo` puis `mamadou.diallo2` |
+| Mot de passe demandé à l'exécution, changement obligatoire à la première connexion | Aucun mot de passe écrit dans le script ni dans le dépôt |
+| Script idempotent | Un objet existant est ignoré : le script peut être relancé sans erreur |
+| Prise en charge de `-WhatIf` | Simulation complète avant toute modification de l'annuaire |
+| OU protégées contre la suppression accidentelle | Bonne pratique Active Directory |
+| Journal horodaté de chaque exécution | Traçabilité des créations |
+
+**Utilisation**, sur le contrôleur de domaine, dans une console PowerShell en administrateur :
+
+```powershell
+cd C:\Scripts
+.\New-LabADStructure.ps1 -WhatIf     # 1. simulation
+.\New-LabADStructure.ps1             # 2. création réelle
+.\New-LabADStructure.ps1             # 3. relance : tout doit être ignoré
+```
+
+| ID | Test | Résultat attendu | Résultat obtenu |
+|---|---|---|---|
+| PS 01 | Simulation `-WhatIf` | Liste des créations, aucune modification | À capturer |
+| PS 02 | Exécution réelle | 8 OU, 4 groupes, 30 utilisateurs, 0 erreur | À capturer |
+| PS 03 | Relance | 0 créé, 30 ignorés, 0 erreur | À capturer |
+| PS 04 | Contrôle dans l'annuaire | 30 comptes et 4 groupes de 4 à 10 membres | À capturer |
 
 ## Problèmes rencontrés et solutions
 
@@ -226,7 +276,7 @@ Set-DhcpServerv4OptionValue -ScopeId 192.168.99.0 -Router 192.168.99.100 -DnsSer
 - [x] Windows Server 2025 joint au domaine
 - [x] DHCP sur le contrôleur de domaine pour le LAN
 - [ ] Partages par service sur Windows Server 2025
-- [ ] Script PowerShell : création de 30 utilisateurs, OU et groupes depuis un CSV
+- [ ] Script PowerShell : création de 30 utilisateurs, OU et groupes depuis un CSV (script prêt, exécution à valider)
 - [ ] GPO : fond d'écran, lecteur réseau, politique de mots de passe
 - [ ] Script PowerShell : rapport des comptes inactifs et de l'espace disque
 
