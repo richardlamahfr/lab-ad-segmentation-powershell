@@ -22,7 +22,7 @@ Suite du [lab pfSense en haute disponibilité](https://github.com/richardlamahfr
 
 Un /29 offre six adresses utilisables : le serveur, les deux pfSense et la VIP en occupent quatre. C'est suffisant pour une zone à un seul serveur et cela limite la surface d'adressage.
 
-**Postes du domaine** : Direction sous Windows 11, Développement, Comptabilité et Marketing sous Windows 10.
+**Postes du domaine** : Direction sous Windows 11, Développement, Comptabilité et Marketing sous Windows 10. Les nouveaux postes reçoivent leur adresse du serveur DHCP du contrôleur de domaine (plage 192.168.99.55 à 192.168.99.70) ; le poste Marketing (PLT-001-Marketing) est passé en DHCP.
 
 ## Matrice des flux
 
@@ -106,6 +106,26 @@ Captures des règles en place : [onglet DMZ](docs/images/tests/09-regles-dmz.png
 
 ![Canal sécurisé](docs/images/tests/03-fileserver-dans-le-domaine.png)
 
+## DHCP sur le contrôleur de domaine
+
+Le serveur DHCP de pfSense est désactivé sur le LAN : un seul serveur DHCP par réseau, le rôle DHCP de Windows Server 2019 (192.168.99.15).
+
+| Paramètre | Valeur |
+|---|---|
+| Étendue | 192.168.99.0/24 |
+| Plage distribuée | 192.168.99.55 à 192.168.99.70 (16 adresses, hors adresses fixes, VIP et plage sans Internet) |
+| 003 Routeur | 192.168.99.100 (VIP CARP) |
+| 006 Serveurs DNS | 192.168.99.15 uniquement |
+| 015 Nom de domaine DNS | ecole-gn.gn |
+
+| ID | Test | Résultat attendu | Résultat obtenu |
+|---|---|---|---|
+| DHCP 01 | Bail obtenu par un poste du LAN | Adresse dans la plage, serveur 192.168.99.15 | **Réussi** : 192.168.99.55 |
+| DHCP 02 | Passerelle distribuée | 192.168.99.100 | **Réussi** après correction |
+| DHCP 03 | DNS distribué | 192.168.99.15 seul | **Réussi** après correction |
+| DHCP 04 | Accès Internet et résolution du domaine depuis le poste | `ping 8.8.8.8` et `nslookup ecole-gn.gn` répondent | À capturer |
+| DHCP 05 | Serveur DHCP autorisé dans l'AD | `Get-DhcpServerInDC` liste 192.168.99.15 | À capturer |
+
 ## Problèmes rencontrés et solutions
 
 ### 1. Aucune communication avec les nouvelles zones : « Block private networks »
@@ -173,6 +193,26 @@ Captures des règles en place : [onglet DMZ](docs/images/tests/09-regles-dmz.png
 
 **Ce que j'en retiens** : un durcissement se teste aussi sur ce qu'il ne doit pas casser. Journaliser les blocages permet de retrouver les flux légitimes oubliés.
 
+### 6. Une étendue DHCP sans passerelle et avec un DNS public
+
+**Symptôme** : le poste Marketing obtenait bien une adresse (192.168.99.55), mais `ipconfig /all` affichait une passerelle vide et deux serveurs DNS, 192.168.99.15 et 8.8.8.8.
+
+**Cause** : l'option 003 (Routeur) n'était pas définie dans l'étendue, et l'option 006 contenait un DNS public en plus du contrôleur de domaine.
+
+**Impact** : sans passerelle, le poste ne peut joindre ni Internet, ni la DMZ, ni FileServer. Avec 8.8.8.8, qui ne connaît pas `ecole-gn.gn`, l'ouverture de session et les GPO peuvent échouer de façon aléatoire.
+
+**Résolution** : option 003 réglée sur la VIP 192.168.99.100, option 006 limitée à 192.168.99.15. Les requêtes vers Internet sont transmises par le serveur DNS de l'AD (redirecteurs), jamais par les postes eux-mêmes.
+
+```powershell
+Set-DhcpServerv4OptionValue -ScopeId 192.168.99.0 -Router 192.168.99.100 -DnsServer 192.168.99.15 -DnsDomain ecole-gn.gn
+```
+
+![Avant : passerelle vide, DNS public](docs/images/tests/12-dhcp-avant-sans-passerelle.png)
+
+![Après : passerelle VIP, DNS de l'AD seul](docs/images/tests/13-dhcp-apres-passerelle-dns-ad.png)
+
+**Ce que j'en retiens** : un bail obtenu ne prouve pas qu'un poste fonctionne ; on contrôle la passerelle et le DNS reçus.
+
 ## Bonnes pratiques appliquées
 
 - Le fichier netplan du serveur DMZ s'appelle `50-cloud-init.yaml` : la configuration réseau de cloud-init est désactivée (`/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`) pour qu'il ne soit pas réécrit au redémarrage.
@@ -184,7 +224,7 @@ Captures des règles en place : [onglet DMZ](docs/images/tests/09-regles-dmz.png
 
 - [x] Segmentation en trois zones et règles inter-zones
 - [x] Windows Server 2025 joint au domaine
-- [ ] DHCP sur le contrôleur de domaine pour le LAN
+- [x] DHCP sur le contrôleur de domaine pour le LAN
 - [ ] Partages par service sur Windows Server 2025
 - [ ] Script PowerShell : création de 30 utilisateurs, OU et groupes depuis un CSV
 - [ ] GPO : fond d'écran, lecteur réseau, politique de mots de passe
