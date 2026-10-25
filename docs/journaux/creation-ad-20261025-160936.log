@@ -1,0 +1,59 @@
+2026-10-25 16:09:36 [INFO] Domaine ecole-gn.gn, OU racine OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:09:36 [INFO] 30 utilisateurs, 4 postes, services : Comptabilite, Developpement, Direction, Marketing, RH
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [OK] OU créée : OU=Groupes,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=Comptabilite,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=users,OU=Comptabilite,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=computers,OU=Comptabilite,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=Developpement,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=users,OU=Developpement,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=computers,OU=Developpement,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=Direction,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=users,OU=Direction,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=computers,OU=Direction,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=Marketing,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=users,OU=Marketing,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=computers,OU=Marketing,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=RH,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=users,OU=RH,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [IGNORE] OU déjà présente : OU=computers,OU=RH,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:29 [OK] Groupe créé : GRP_Comptabilite
+2026-10-25 16:10:29 [OK] Groupe créé : GRP_Developpement
+2026-10-25 16:10:29 [OK] Groupe créé : GRP_Direction
+2026-10-25 16:10:29 [OK] Groupe créé : GRP_Marketing
+2026-10-25 16:10:29 [OK] Groupe créé : GRP_RH
+2026-10-25 16:10:29 [OK] Utilisateur créé : Hélène Martin (helene.martin), service Direction
+2026-10-25 16:10:29 [IGNORE] Utilisateur déjà présent : Mamadou Diallo (mamadoud)
+2026-10-25 16:10:29 [OK] Utilisateur créé : Claire Dubois (claire.dubois), service Direction
+2026-10-25 16:10:29 [OK] Utilisateur créé : Ousmane Barry (ousmane.barry), service RH
+2026-10-25 16:10:29 [OK] Utilisateur créé : Émilie Moreau (emilie.moreau), service RH
+2026-10-25 16:10:30 [OK] Utilisateur créé : Léa Richard (lea.richard), service RH
+2026-10-25 16:10:30 [OK] Utilisateur créé : Thomas Bernard (thomas.bernard), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Aïssatou Bah (aissatou.bah), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Julien Petit (julien.petit), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Fatoumata Camara (fatoumata.camara), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Nicolas Robert (nicolas.robert), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Ibrahima Sow (ibrahima.sow), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Sophie Durand (sophie.durand), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Alpha Condé (alpha.conde), service Developpement
+2026-10-25 16:10:30 [OK] Utilisateur créé : Pierre Laurent (pierre.laurent), service Comptabilite
+2026-10-25 16:10:30 [OK] Utilisateur créé : Mariama Sylla (mariama.sylla), service Comptabilite
+2026-10-25 16:10:30 [OK] Utilisateur créé : Antoine Simon (antoine.simon), service Comptabilite
+2026-10-25 16:10:30 [OK] Utilisateur créé : Kadiatou Touré (kadiatou.toure), service Comptabilite
+2026-10-25 16:10:31 [OK] Utilisateur créé : Laura Michel (laura.michel), service Comptabilite
+2026-10-25 16:10:31 [OK] Utilisateur créé : Sékou Keita (sekou.keita), service Comptabilite
+2026-10-25 16:10:31 [OK] Utilisateur créé : Camille Lefebvre (camille.lefebvre), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Boubacar Baldé (boubacar.balde), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Manon Leroy (manon.leroy), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Mohamed Kaba (mohamed.kaba), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Inès Roux (ines.roux), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Lucas David (lucas.david), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Djénabou Diallo (djenabou.diallo), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Hugo Bertrand (hugo.bertrand), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Sarah Morel (sarah.morel), service Marketing
+2026-10-25 16:10:31 [OK] Utilisateur créé : Thierno Bah (thierno.bah), service Marketing
+2026-10-25 16:10:32 [OK] Poste déplacé : LAP-001-DEV vers OU=computers,OU=Developpement,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:32 [OK] Poste déplacé : LAT-001-COMPT vers OU=computers,OU=Comptabilite,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:32 [OK] Poste déplacé : LAT-001-DIREC vers OU=computers,OU=Direction,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:32 [OK] Poste déplacé : PLT-001-MARKETI vers OU=computers,OU=Marketing,OU=Site_Paris,DC=ecole-gn,DC=gn
+2026-10-25 16:10:32 [INFO] Terminé : 29 utilisateur(s) créé(s), 1 ignoré(s) ; 4 poste(s) déplacé(s), 0 ignoré(s) ; 0 erreur(s). Journal : C:\Users\administrator\Desktop\scripte\creation-ad-20261025-160936.log

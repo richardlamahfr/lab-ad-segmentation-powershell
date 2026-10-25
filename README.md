@@ -134,47 +134,76 @@ Le serveur DHCP de pfSense est désactivé sur le LAN : un seul serveur DHCP par
 
 ## Automatisation Active Directory en PowerShell
 
-Le script [`scripts/New-LabADStructure.ps1`](scripts/New-LabADStructure.ps1) crée toute l'organisation du domaine à partir de [`scripts/utilisateurs.csv`](scripts/utilisateurs.csv) (30 utilisateurs fictifs : Direction 4, Développement 10, Comptabilité 6, Marketing 10).
+Le script [`scripts/New-LabADStructure.ps1`](scripts/New-LabADStructure.ps1) s'appuie sur l'arborescence `Site_Paris` et la complète à partir de deux fichiers :
+- [`scripts/utilisateurs.csv`](scripts/utilisateurs.csv) : 30 utilisateurs fictifs (Direction 3, RH 3, Développement 8, Comptabilité 6, Marketing 10) ;
+- [`scripts/ordinateurs.csv`](scripts/ordinateurs.csv) : les 4 postes du domaine et leur service.
 
 ```
 ecole-gn.gn
-└── OU ECOLE-GN
-    ├── OU Utilisateurs
-    │   ├── OU Direction
-    │   ├── OU Developpement
-    │   ├── OU Comptabilite
-    │   └── OU Marketing
-    ├── OU Groupes         GRP_Direction, GRP_Developpement, GRP_Comptabilite, GRP_Marketing
-    └── OU Ordinateurs
+└── OU Site_Paris
+    ├── OU Admin            comptes d'administration de l'infrastructure (séparés des utilisateurs)
+    ├── OU Comptabilite
+    │   ├── OU users        utilisateurs du service
+    │   └── OU computers    postes du service (LAT-001-COMPT)
+    ├── OU Developpement    (users, computers : LAP-001-DEV)
+    ├── OU Direction        (users, computers : LAT-001-DIREC)
+    ├── OU Marketing        (users, computers : PLT-001-MARKETI)
+    ├── OU RH               (users, computers)
+    ├── OU Groupes          GRP_Comptabilite, GRP_Developpement, GRP_Direction, GRP_Marketing, GRP_RH
+    └── OU Serveurs         FILESERVER (Windows Server 2025)
 ```
+
+**Pourquoi déplacer les postes** : `Computers` et `Users` sont des conteneurs par défaut, pas des OU. On ne peut pas y lier de GPO ; les postes doivent donc être rangés dans une OU pour recevoir des stratégies ordinateur.
 
 **Choix de conception**
 
 | Choix | Raison |
 |---|---|
+| Organisation par service, puis par type d'objet (`users`, `computers`) | Une GPO liée à `Site_Paris` touche toute l'entreprise, une GPO liée à `Marketing\computers` seulement les postes du Marketing |
+| Comptes d'administration dans une OU `Admin` distincte | Leur appliquer des règles plus strictes et ne jamais les mélanger aux comptes du quotidien |
 | Identifiant `prenom.nom`, sans accents, 20 caractères maximum | Limite du sAMAccountName ; « Hélène Martin » devient `helene.martin` |
 | Suffixe numérique en cas d'homonyme | Deux « Mamadou Diallo » donnent `mamadou.diallo` puis `mamadou.diallo2` |
-| Mot de passe demandé à l'exécution, changement obligatoire à la première connexion | Aucun mot de passe écrit dans le script ni dans le dépôt |
-| Script idempotent | Un objet existant est ignoré : le script peut être relancé sans erreur |
+| Mot de passe demandé à l'exécution, seulement si un compte doit être créé ; changement obligatoire à la première connexion | Aucun mot de passe écrit dans le script ni dans le dépôt ; une relance ou une simulation ne le demande pas |
+| Script idempotent | Un objet existant ou déjà à sa place est ignoré : le script peut être relancé sans erreur |
 | Prise en charge de `-WhatIf` | Simulation complète avant toute modification de l'annuaire |
-| OU protégées contre la suppression accidentelle | Bonne pratique Active Directory |
-| Journal horodaté de chaque exécution | Traçabilité des créations |
+| OU créées protégées contre la suppression accidentelle | Bonne pratique Active Directory |
+| Journal horodaté de chaque exécution | Traçabilité des opérations |
 
-**Utilisation**, sur le contrôleur de domaine, dans une console PowerShell en administrateur :
+**Utilisation**, sur le contrôleur de domaine, dans une console PowerShell en administrateur. Le script se récupère directement depuis ce dépôt :
 
 ```powershell
+New-Item C:\Scripts -ItemType Directory -Force | Out-Null
+$base = "https://raw.githubusercontent.com/richardlamahfr/lab-ad-segmentation-powershell/main/scripts"
+"New-LabADStructure.ps1","utilisateurs.csv","ordinateurs.csv" | ForEach-Object { Invoke-WebRequest "$base/$_" -OutFile "C:\Scripts\$_" }
 cd C:\Scripts
 .\New-LabADStructure.ps1 -WhatIf     # 1. simulation
-.\New-LabADStructure.ps1             # 2. création réelle
+.\New-LabADStructure.ps1             # 2. exécution réelle
 .\New-LabADStructure.ps1             # 3. relance : tout doit être ignoré
 ```
 
-| ID | Test | Résultat attendu | Résultat obtenu |
+| ID | Test | Résultat attendu | Résultat obtenu (25 octobre 2026) |
 |---|---|---|---|
-| PS 01 | Simulation `-WhatIf` | Liste des créations, aucune modification | À capturer |
-| PS 02 | Exécution réelle | 8 OU, 4 groupes, 30 utilisateurs, 0 erreur | À capturer |
-| PS 03 | Relance | 0 créé, 30 ignorés, 0 erreur | À capturer |
-| PS 04 | Contrôle dans l'annuaire | 30 comptes et 4 groupes de 4 à 10 membres | À capturer |
+| PS 01 | Simulation `-WhatIf` | Liste des opérations, aucune modification | **Réussi** : OU Groupes, 5 groupes, 29 utilisateurs et 4 postes annoncés, 0 erreur |
+| PS 02 | Exécution réelle | OU Groupes, 5 groupes, utilisateurs créés, 4 postes déplacés, 0 erreur | **Réussi** : 29 créés, 1 ignoré (compte existant `mamadoud`), 4 postes déplacés, 0 erreur, en 3 secondes |
+| PS 03 | Relance | Tout est ignoré, 0 erreur | **Réussi** : OU, groupes et utilisateurs signalés « déjà présents » |
+| PS 04 | Contrôle dans l'annuaire | Groupes de 6, 8, 3, 10 et 3 membres ; conteneur `Computers` vide | **Réussi** : GRP_Comptabilite 6, GRP_Developpement 8, GRP_Direction 3, GRP_Marketing 10, GRP_RH 3 ; `Computers` vide |
+| PS 05 | Première connexion d'un compte créé | Changement de mot de passe imposé | **Réussi** : `camille.lefebvre` doit changer son mot de passe sur le poste Marketing |
+
+**Total dans `Site_Paris` : 38 comptes.** Les 30 du CSV, plus 8 comptes créés manuellement avant le script, qui ne sont pas gérés par lui. Le compte `mamadoud`, déjà présent, a été reconnu par son prénom et son nom : le script n'a pas créé de doublon. Il a ensuite été rangé dans `Direction\users` et ajouté à `GRP_Direction`. Le serveur de fichiers `FILESERVER` a été placé dans une OU `Serveurs` dédiée : un serveur ne reçoit pas les mêmes GPO qu'un poste de travail.
+
+![Simulation : OU, groupes et utilisateurs](docs/images/tests/16-ps01-whatif-ou-groupes-utilisateurs.png)
+
+![Exécution réelle : bilan](docs/images/tests/19-ps02-execution-postes-bilan.png)
+
+![Relance : tout est ignoré](docs/images/tests/23-ps03-relance-tout-ignore.png)
+
+![Contrôle : groupes et conteneur Computers vide](docs/images/tests/24-ps04-controle-groupes-computers-vide.png)
+
+![Console AD : Developpement\users](docs/images/tests/20-console-ad-developpement-users.png)
+
+![Changement de mot de passe imposé à la première connexion](docs/images/tests/22-changement-mdp-camille-lefebvre.png)
+
+Journal complet de l'exécution réelle : [`docs/journaux/creation-ad-20261025-160936.log`](docs/journaux/creation-ad-20261025-160936.log). Il ne contient aucun mot de passe.
 
 ## Problèmes rencontrés et solutions
 
@@ -263,6 +292,26 @@ Set-DhcpServerv4OptionValue -ScopeId 192.168.99.0 -Router 192.168.99.100 -DnsSer
 
 **Ce que j'en retiens** : un bail obtenu ne prouve pas qu'un poste fonctionne ; on contrôle la passerelle et le DNS reçus.
 
+### 7. « Access is denied » en déplaçant une OU
+
+**Symptôme** : impossible de déplacer l'OU Comptabilite dans la nouvelle OU parente, même avec le compte administrateur du domaine.
+
+**Cause** : l'option *Protéger l'objet contre une suppression accidentelle*, cochée par défaut, ajoute une règle de refus « Tout le monde : supprimer ». Pour Active Directory, déplacer un objet revient à le retirer de son emplacement d'origine. Or un refus l'emporte toujours sur une autorisation, y compris pour l'administrateur.
+
+**Résolution** : affichage des fonctionnalités avancées, protection décochée le temps du déplacement, puis remise en place. En PowerShell : `Set-ADOrganizationalUnit -ProtectedFromAccidentalDeletion $false`, puis `Move-ADObject`.
+
+**Ce que j'en retiens** : cette protection évite qu'un glisser-déposer maladroit déplace ou supprime une OU entière. On la retire volontairement, pour une opération précise, puis on la remet.
+
+### 8. Partage du PC hôte refusé : accès invité bloqué
+
+**Symptôme** : depuis les VM, le montage du dossier d'échange du PC hôte échouait avec « *your organization's security policies block unauthenticated guest access* », puis avec les erreurs 86 et 67.
+
+**Cause** : le compte du domaine utilisé dans la VM n'existe pas sur le PC hôte, qui n'est pas membre du domaine. Windows retombait donc sur une connexion invité, sans authentification, que Windows 10 et Windows Server 2019 bloquent par défaut : un partage sans authentification permet à n'importe quelle machine de se faire passer pour un serveur de fichiers.
+
+**Résolution** : connexion avec un compte local du PC hôte, `net use Z: \\HOTE\partage /user:HOTE\compte *`, plutôt que de réactiver l'accès invité. Au passage, un partage non voulu de tout le dossier `C:\Users` de l'hôte a été repéré avec `net share`.
+
+**Ce que j'en retiens** : chaque code d'erreur indique l'étape qui échoue (86 : mot de passe ; 67 : nom de partage ; 1272 : invité bloqué). On ne contourne pas une protection de sécurité, on fournit la bonne authentification.
+
 ## Bonnes pratiques appliquées
 
 - Le fichier netplan du serveur DMZ s'appelle `50-cloud-init.yaml` : la configuration réseau de cloud-init est désactivée (`/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`) pour qu'il ne soit pas réécrit au redémarrage.
@@ -276,7 +325,9 @@ Set-DhcpServerv4OptionValue -ScopeId 192.168.99.0 -Router 192.168.99.100 -DnsSer
 - [x] Windows Server 2025 joint au domaine
 - [x] DHCP sur le contrôleur de domaine pour le LAN
 - [ ] Partages par service sur Windows Server 2025
-- [ ] Script PowerShell : création de 30 utilisateurs, OU et groupes depuis un CSV (script prêt, exécution à valider)
+- [x] Structure Site_Paris : une OU par service (users, computers), OU Admin pour les comptes d'administration
+- [x] Script PowerShell : 30 utilisateurs, 5 groupes et rangement des postes depuis deux CSV (exécuté et validé)
+- [x] OU Serveurs pour FILESERVER, conteneur Computers vidé
 - [ ] GPO : fond d'écran, lecteur réseau, politique de mots de passe
 - [ ] Script PowerShell : rapport des comptes inactifs et de l'espace disque
 
