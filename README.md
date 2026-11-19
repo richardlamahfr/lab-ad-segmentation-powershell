@@ -9,6 +9,7 @@ Suite du [lab pfSense en haute disponibilité](https://github.com/richardlamahfr
 - **Segmentation réseau** : trois zones derrière une paire pfSense CARP, une VIP passerelle par zone, NAT sortante de chaque zone sur la VIP WAN
 - **Filtrage** : règles par interface d'entrée, alias (réseaux privés, ports web, ports Active Directory), refus par défaut, journalisation des blocages
 - **Active Directory** : serveur Windows Server 2025 dans une zone dédiée, joint au domaine `ecole-gn.gn` à travers le pare-feu avec uniquement les ports AD ouverts
+- **Partages de fichiers** : modèle AGDLP, droits NTFS avec `icacls`, partage SMB avec énumération basée sur l'accès, données sur un disque dédié
 - **Méthode** : preuve du défaut avant correction, tests de non-régression après correction
 
 ## Plan d'adressage
@@ -205,6 +206,32 @@ cd C:\Scripts
 
 Journal complet de l'exécution réelle : [`docs/journaux/creation-ad-20261025-160936.log`](docs/journaux/creation-ad-20261025-160936.log). Il ne contient aucun mot de passe.
 
+## Partages de fichiers par service
+
+Un partage unique `\\FILESERVER\Partages` (dossier `E:\Partages`, sur un disque de données dédié) contient un dossier par service et un dossier `Commun`. Les droits suivent le modèle **AGDLP** : les utilisateurs sont dans le groupe global de leur service (`GRP_Marketing`), ce groupe est membre d'un groupe domaine local (`DL_partage_Marketing_RW`), et seul ce dernier reçoit le droit NTFS **Modification** sur le dossier. L'**énumération basée sur l'accès** (ABE) masque à chacun les dossiers qu'il ne peut pas ouvrir.
+
+| Couche | Réglage |
+|---|---|
+| Partage SMB | Admins du domaine : Total ; Utilisateurs authentifiés : Modifier ; ABE activée |
+| NTFS sur `E:\Partages` | Héritage coupé ; Administrateurs et Système : Contrôle total ; Utilisateurs authentifiés : Lecture sur la racine seulement |
+| NTFS sur chaque dossier | `DL_partage_<Service>_RW` : Modification |
+
+| ID | Test | Résultat obtenu |
+|---|---|---|
+| PART 01 | Port SMB 445 joignable depuis le poste Marketing | **Réussi** |
+| PART 02 | Camille (Marketing) ne voit que Commun et Marketing | **Réussi** |
+| PART 03 à 06 | Écriture, accès refusé à Direction, groupes du jeton, test avec un compte Direction | À capturer |
+| PART 07 | ABE active sur le partage | **Réussi** |
+| PART 08 | Un administrateur du domaine voit les 6 dossiers | **Réussi** |
+
+![Droits NTFS du dossier Marketing](docs/images/tests/25-ntfs-droits-marketing.png)
+
+![Partage SMB, droits de partage et ABE](docs/images/tests/26-partage-smb-abe.png)
+
+![Camille ne voit que Commun et Marketing](docs/images/tests/28-part02-abe-camille-commun-marketing.png)
+
+![Un administrateur du domaine voit les 6 dossiers](docs/images/tests/30-admin-voit-tous-les-dossiers.png)
+
 ## Problèmes rencontrés et solutions
 
 ### 1. Aucune communication avec les nouvelles zones : « Block private networks »
@@ -312,6 +339,57 @@ Set-DhcpServerv4OptionValue -ScopeId 192.168.99.0 -Router 192.168.99.100 -DnsSer
 
 **Ce que j'en retiens** : chaque code d'erreur indique l'étape qui échoue (86 : mot de passe ; 67 : nom de partage ; 1272 : invité bloqué). On ne contourne pas une protection de sécurité, on fournit la bonne authentification.
 
+### 9. `icacls : Paramètre non valide` : deux commandes sur une seule ligne
+
+**Symptôme** : la boucle d'attribution des droits NTFS renvoyait, pour chaque dossier, `icacls : Paramètre non valide « icacle »`.
+
+**Cause** : trois erreurs de saisie dans la même ligne. Il manquait le `$` devant la variable du chemin (`"$racine\d"`). Les deux commandes `icacls` n'étaient séparées par rien, PowerShell les lisait donc comme une seule commande. Enfin, la seconde était mal orthographiée (`icacle`).
+
+**Résolution** : le message d'erreur indiquait le paramètre refusé ; la comparaison avec la commande de référence a permis de corriger le chemin et l'orthographe, et d'ajouter un `;` entre les deux commandes. Aucun droit n'avait été modifié, car `icacls` refuse la ligne entière dès l'analyse des paramètres.
+
+**Ce que j'en retiens** : on lit le message d'erreur avant tout. Il nomme le paramètre fautif et indique où chercher.
+
+### 10. Un premier partage en double, créé depuis l'interface graphique
+
+**Symptôme** : `\\FILESERVER` affichait deux partages, `Partage` et `Partages`.
+
+**Cause** : un premier partage `Partage` avait été créé depuis l'interface graphique, avant la mise en place du partage scripté. Un partage oublié contourne l'organisation des droits, en particulier s'il expose la racine d'un disque.
+
+**Résolution** : contrôle du chemin exposé avec `Get-SmbShare`, puis suppression du partage, sans toucher aux fichiers, avec `Remove-SmbShare -Name "Partage" -Force`.
+
+![Deux partages : Partage et Partages](docs/images/tests/29-deux-partages-partage-et-partages.png)
+
+**Ce que j'en retiens** : `Get-SmbShare` fait partie des contrôles réguliers d'un serveur de fichiers. Un partage qui n'est pas documenté doit être justifié ou supprimé.
+
+### 11. Incident : serveur de fichiers instable puis injoignable après une mise à jour
+
+**Symptôme** : après une mise à jour de Windows Server 2025, FILESERVER plantait peu après chaque démarrage. Une fois stabilisé, les postes ne pouvaient plus ouvrir `\\FILESERVER\Partages`, et les pings dans les deux sens échouaient.
+
+**Diagnostic**, couche par couche :
+1. **Plantages** : la VM n'avait pas fini de démarrer et d'installer la mise à jour, alors que le PC hôte était déjà à 88 % de ses ressources. Le démarrage avec seulement les VM nécessaires a résolu l'instabilité.
+2. **Configuration IP** (`ipconfig /all`) : correcte (192.168.240.1/29, passerelle 192.168.240.5).
+3. **Pings vers la passerelle et le DC** : en échec, mais ce n'était **pas** une panne. Les adresses de pfSense et du DC sont privées, et la règle de blocage vers `RESEAUX_PRIVES` est placée au-dessus de la règle ICMP ; le compteur à 0 de la règle ICMP le confirmait. En revanche, la règle `PORTS_AD` affichait des états actifs : le réseau entre FILESERVER, pfSense et le DC fonctionnait.
+4. **Service et partage** : `LanmanServer` démarré, partage présent.
+5. **Profil réseau du pare-feu Windows** : la carte était en profil **Public** au lieu de **DomainAuthenticated**. Au démarrage, le serveur n'avait pas joint le contrôleur de domaine à temps, et Windows avait choisi le profil le plus restrictif.
+6. **Port SMB depuis un poste** (`Test-NetConnection FILESERVER -Port 445`) : `True`. L'accès SMB était rétabli une fois le serveur stable.
+
+**Résolution** : redémarrage de la carte réseau pour que Windows réévalue le profil (`Restart-NetAdapter -Name Ethernet0`). Une première tentative a échoué avec « Accès refusé » (erreur 5) : la console PowerShell n'était pas élevée, et le contrôle de compte d'utilisateur (UAC) limitait les droits. Relancée dans une console « Exécuter en tant qu'administrateur », la commande a remis la carte en profil **DomainAuthenticated**.
+
+![Compteurs des règles pfSense FILESERVER](docs/images/tests/31-incident-regles-fileserver-compteurs.png)
+
+![Profil réseau Public](docs/images/tests/32-incident-profil-public.png)
+
+![Accès refusé sans élévation](docs/images/tests/33-incident-acces-refuse-sans-elevation.png)
+
+![Profil DomainAuthenticated rétabli](docs/images/tests/34-incident-profil-domainauthenticated.png)
+
+**Ce que j'en retiens** :
+- un ping qui échoue ne prouve rien ; on teste le port du service (`Test-NetConnection -Port 445`) et on lit les compteurs d'états du pare-feu ;
+- un serveur du domaine en profil Public n'applique pas les règles prévues pour le domaine : `Get-NetConnectionProfile` fait partie des contrôles après tout redémarrage ;
+- « Accès refusé » avec un compte administrateur signale souvent une console non élevée ;
+- on ne surcharge pas l'hôte de virtualisation pendant une mise à jour ;
+- une modification à la fois pendant un dépannage.
+
 ## Bonnes pratiques appliquées
 
 - Le fichier netplan du serveur DMZ s'appelle `50-cloud-init.yaml` : la configuration réseau de cloud-init est désactivée (`/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`) pour qu'il ne soit pas réécrit au redémarrage.
@@ -324,7 +402,7 @@ Set-DhcpServerv4OptionValue -ScopeId 192.168.99.0 -Router 192.168.99.100 -DnsSer
 - [x] Segmentation en trois zones et règles inter-zones
 - [x] Windows Server 2025 joint au domaine
 - [x] DHCP sur le contrôleur de domaine pour le LAN
-- [ ] Partages par service sur Windows Server 2025
+- [x] Partages par service sur Windows Server 2025 (AGDLP, NTFS, ABE ; tests PART 03 à 06 à compléter)
 - [x] Structure Site_Paris : une OU par service (users, computers), OU Admin pour les comptes d'administration
 - [x] Script PowerShell : 30 utilisateurs, 5 groupes et rangement des postes depuis deux CSV (exécuté et validé)
 - [x] OU Serveurs pour FILESERVER, conteneur Computers vidé
